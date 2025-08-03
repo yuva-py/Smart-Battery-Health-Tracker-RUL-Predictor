@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# IDE / Editor Settings
+.vscode/
+.idea/
+
+# Generated Files
+*.pkl
+*.png
+
+# Data files (optional, but good practice if they are large)
+# *.mat
+
+# Operating System Files
+.DS_Store
+Thumbs.db
