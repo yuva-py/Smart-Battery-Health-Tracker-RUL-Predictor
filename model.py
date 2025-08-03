@@ -1209,9 +1209,9 @@ class AdvancedBatteryRULPredictor:
         return fig
 
 
-def run_enhanced_analysis(mat_file_path, eol_threshold=80, battery_type="Li-ion 18650"):
+def run_enhanced_analysis(mat_file_path, eol_threshold=80, battery_type="Li-ion 18650", streamlit_interface=None):
     """
-    Corrected and complete analysis pipeline.
+    Enhanced analysis pipeline with optional Streamlit error reporting.
     """
     print(f"\n" + "="*70)
     print(f"🔋 SMART BATTERY HEALTH TRACKER - ENHANCED ANALYSIS")
@@ -1233,24 +1233,23 @@ def run_enhanced_analysis(mat_file_path, eol_threshold=80, battery_type="Li-ion 
         battery = mat[battery_key][0, 0]
         cycles = battery['cycle'][0]
         
-        # --- 2. Process Cycles into a Clean List ---
+        # --- 2. Process Cycles into Clean List ---
         processed_data = []
         initial_capacity = None
         cycle_counter = 0
 
         for cycle_struct in cycles:
-            if get_cycle_type(cycle_struct) == 'd': # Use the safe helper function
+            if get_cycle_type(cycle_struct) == 'd':
                 cycle_counter += 1
                 data_dict = cycle_struct['data'][0, 0]
                 
-                # Define all data variables correctly
                 currents = data_dict['Current_measured'].flatten()
                 voltages = data_dict['Voltage_measured'].flatten()
                 temps = data_dict['Temperature_measured'].flatten()
                 times = data_dict['Time'].flatten()
                 
                 capacity = np.trapezoid(currents, x=times) / 3600
-                
+
                 if initial_capacity is None:
                     initial_capacity = abs(capacity)
                 
@@ -1263,43 +1262,34 @@ def run_enhanced_analysis(mat_file_path, eol_threshold=80, battery_type="Li-ion 
                     'avg_voltage': np.mean(voltages),
                     'avg_current': np.mean(currents),
                     'avg_temp_c': np.mean(temps)
-                    # Add any other fields you need here
                 })
 
         if not processed_data:
             raise ValueError("No valid discharge cycle data was found in the .mat file.")
 
-        # --- 3. Create DataFrame and Run Analysis ---
+        # --- 3. Run Analysis ---
         df = pd.DataFrame(processed_data)
         print(f"✅ Processed {len(df)} discharge cycles")
-        
+
         predictor = AdvancedBatteryRULPredictor(eol_threshold=eol_threshold, battery_type=battery_type)
-        
+
         print("\n🧠 Running ML-based health assessment...")
-        
-        # Calculate health metrics
         health_score = predictor.calculate_health_score(df)
         current_soh = df['soh_percent'].iloc[-1]
         health_status = predictor.get_health_status(current_soh)
-        
+
         print(f"🚨 Running anomaly detection...")
-        
-        # Anomaly detection
         anomalies_dict = predictor.detect_anomalies(df)
         anomalies_df = pd.DataFrame(anomalies_dict['anomalies']) if anomalies_dict['anomalies'] else pd.DataFrame()
-        
+
         print(f"🔬 Performing backtesting analysis...")
-        
-        # Backtesting
         results_df = predictor.backtest_comprehensive(df, enable_progress=False)
-        
-        # Final RUL prediction using all available data
+
         ensemble_rul, individual_predictions, model_reliability = predictor.estimate_rul_ensemble(df)
         final_rul_prediction, final_method_used, confidence = predictor.get_final_prediction(
             individual_predictions, model_reliability, method='intelligent'
         )
-        
-        # Analysis summary
+
         capacity_fade = 100 - current_soh
         analysis_summary = {
             'total_cycles': len(df),
@@ -1311,7 +1301,7 @@ def run_enhanced_analysis(mat_file_path, eol_threshold=80, battery_type="Li-ion 
             'final_rul': final_rul_prediction,
             'confidence': confidence
         }
-        
+
         print("="*70)
         print("✅ ANALYSIS COMPLETE - SUMMARY (FIXED)")
         print("="*70)
@@ -1326,7 +1316,7 @@ def run_enhanced_analysis(mat_file_path, eol_threshold=80, battery_type="Li-ion 
         print(f"   • Model Reliabilities: {model_reliability}")
         print(f"   • Selected Method: {final_method_used}")
         print("="*70)
-        
+
         return {
             "dataframe": df,
             "predictor": predictor,
@@ -1341,12 +1331,17 @@ def run_enhanced_analysis(mat_file_path, eol_threshold=80, battery_type="Li-ion 
             "prediction_confidence": confidence,
             "analysis_summary": analysis_summary
         }
-        
+
     except Exception as e:
-        print(f"❌ Error during analysis: {str(e)}")
+        error_msg = f"❌ Error during analysis: {str(e)}"
+        print(error_msg)
         import traceback
         traceback.print_exc()
+        if streamlit_interface:
+            streamlit_interface.error(error_msg)
         return None
+
+
 
 
 # Example usage and testing

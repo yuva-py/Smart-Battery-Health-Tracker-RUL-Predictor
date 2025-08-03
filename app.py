@@ -212,9 +212,13 @@ if uploaded_file is not None:
                 results = run_enhanced_analysis(
                     mat_file_path=uploaded_file,
                     eol_threshold=eol_threshold,
-                    battery_type=battery_type
+                    battery_type=battery_type,
+                    streamlit_interface=st  
                 )
-                
+
+                if results is None:
+                    st.error("🚨 ERROR: Analysis failed. No results returned.")
+                    st.stop()
                 # Unpack results safely
                 df = results.get("dataframe")
                 predictor = results.get("predictor")
