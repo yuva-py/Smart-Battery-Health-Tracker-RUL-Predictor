@@ -7,8 +7,9 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import time
 from model import run_enhanced_analysis  # Import your main function
+import os
+os.environ["STREAMLIT_CONFIG_FILE"] = "./.streamlit/config.toml"
 
-# --- Page Configuration ---
 st.set_page_config(
     layout="wide", 
     page_title="Smart Battery Health Tracker",
