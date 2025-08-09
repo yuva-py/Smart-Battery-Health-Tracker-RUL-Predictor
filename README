@@ -2,7 +2,7 @@
 
 An intelligent predictive maintenance dashboard that analyzes battery degradation data to forecast its Remaining Useful Life (RUL). This application uses a suite of machine learning and statistical models to provide a robust, validated, and user-friendly analysis of lithium-ion battery health.
 
-![Dashboard Screenshot](C:\Users\YUVARAJ\ml project\assets\{3AD38A41-0390-4882-B320-5C2BE0184372}.png) **Live Application:** [**Launch the Interactive Dashboard**](https://huggingface.co/spaces/mykyuvaraj/Smart-Battery-Health-Tracker-RUL-Predictor#b4d81b86) ---
+![Dashboard Screenshot](assets/dashboard.png) **Live Application:** [**Launch the Interactive Dashboard**](https://huggingface.co/spaces/mykyuvaraj/Smart-Battery-Health-Tracker-RUL-Predictor#b4d81b86) ---
 
 ## 🌟 Key Features
 
