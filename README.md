@@ -1,0 +1,130 @@
+# 🔋 AI-Powered Battery Health & RUL Predictor
+
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![Streamlit App](https://img.shields.io/badge/Streamlit-Dashboard-orange)](https://huggingface.co/spaces/mykyuvaraj/Smart-Battery-Health-Tracker-RUL-Predictor#b4d81b86)
+[![Repo Status](https://img.shields.io/badge/status-active-success)](https://github.com/yuva-py/Smart-Battery-Health-Tracker-RUL-Predictor)
+
+---
+
+## 📑 Table of Contents
+- [Project Overview](#project-overview)
+- [Live Demo](#live-demo)
+- [Key Features](#key-features)
+- [How It Works: The Data Pipeline](#how-it-works-the-data-pipeline)
+- [Getting Started](#getting-started)
+- [Technology Stack](#technology-stack)
+- [Dataset](#dataset)
+- [License](#license)
+- [Contributing](#contributing)
+
+---
+
+## 📝 Project Overview
+
+An intelligent predictive maintenance dashboard that analyzes battery degradation data to forecast its Remaining Useful Life (RUL). This application uses a suite of machine learning and statistical models to deliver accurate, actionable predictions.
+
+![Dashboard Screenshot](assets/dashboard.png)
+
+---
+
+## 🚀 Live Demo
+
+**Try it now:**  
+[**Launch the Interactive Dashboard**](https://huggingface.co/spaces/mykyuvaraj/Smart-Battery-Health-Tracker-RUL-Predictor#b4d81b86)
+
+---
+
+## 🌟 Key Features
+
+* **End-to-End Analysis**: Upload raw NASA battery data (`.mat` file) and get a complete health assessment with a single click.
+* **Intelligent RUL Prediction**: Utilizes a suite of models, including Trend Analysis, Linear & Polynomial Regression, and Exponential Smoothing, to forecast the End-of-Life (EOL).
+* **Smart Ensemble Model**: Combines multiple predictions using an intelligent, weighted average to produce a more reliable final forecast.
+* **Rigorous Backtesting**: Automatically validates the models' accuracy against historical data, providing a transparent Mean Absolute Error (MAE) score.
+* **Anomaly Detection**: Identifies and visualizes cycles with unusually high degradation rates, alerting users to potential issues.
+* **Interactive Dashboard**: Built with Streamlit, the UI provides clear metric cards, interactive Plotly charts, and actionable recommendations for non-technical users.
+
+---
+
+## ⚙️ How It Works: The Data Pipeline
+
+The application follows a complete, end-to-end data science workflow to ensure the predictions are both accurate and trustworthy.
+
+1. **Data Processing**: Ingests the complex, raw `.mat` file, filters for discharge cycles, and calculates key health indicators like capacity, State of Health (SoH), and average voltage/temperature.
+2. **Feature Engineering**: Creates sophisticated features that capture the dynamics of battery degradation, such as rolling averages, degradation rates (speed), and degradation acceleration.
+3. **Multi-Model Prediction**: Deploys a suite of different forecasting models to predict the RUL. Each model has a different assumption, providing a range of possible outcomes.
+4. **Backtesting & Validation**: The system uses a "time machine" approach, running the entire prediction pipeline at different points in the battery's past to measure how accurate each model is.
+5. **Final Decision**: Based on the backtesting results, the application intelligently selects the most reliable model (`Trend_Analysis`) as the final, definitive prediction.
+6. **Visualization**: All results are presented in a clean, interactive dashboard with clear metrics, plots, and actionable alerts.
+
+---
+
+## 🛠️ Getting Started
+
+You can run this application locally on your machine.
+
+### Prerequisites
+
+* Python 3.8+
+* The project dependencies listed in `requirements.txt`.
+
+### Installation
+
+1. **Clone the repository:**
+    ```bash
+    git clone https://github.com/yuva-py/Smart-Battery-Health-Tracker-RUL-Predictor
+    cd Smart-Battery-Health-Tracker-RUL-Predictor
+    ```
+
+2. **Create and activate a virtual environment:**
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
+    ```
+
+3. **Install the required libraries:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+### Usage
+
+1. Ensure you have the NASA battery datasets (e.g., `B0005.mat`, `B0007.mat`) in the project directory.
+2. Launch the Streamlit application from your terminal:
+    ```bash
+    streamlit run streamlit_app.py
+    ```
+3. Your web browser will open with the interactive dashboard. Upload a `.mat` file and click "Analyze" to see the results.
+
+---
+
+## 🛠️ Technology Stack
+
+* **Backend & Analysis**: Python, Pandas, NumPy, SciPy
+* **Machine Learning & Modeling**: Scikit-learn, Statsmodels
+* **Dashboard & UI**: Streamlit
+* **Data Visualization**: Plotly, Matplotlib
+* **Code Quality**: Pylance
+
+---
+
+## 📊 Dataset
+
+This project uses the **NASA Prognostics Center of Excellence Battery Data Set**. The data tracks the degradation of various Lithium-ion batteries over hundreds of charge/discharge cycles.
+
+* **Source**: [NASA PCoE Data Repository](https://ti.arc.nasa.gov/tech/dash/groups/pcoe/prognostic-data-repository/)
+
+---
+
+## 📜 License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome!  
+Feel free to check the [issues page](https://github.com/yuva-py/Smart-Battery-Health-Tracker-RUL-Predictor/issues) to get started.
+
+---
