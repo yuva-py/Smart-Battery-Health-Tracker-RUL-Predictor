@@ -6,954 +6,1052 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import time
-from model import run_enhanced_analysis  # Import your main function
-import os
-os.environ["STREAMLIT_CONFIG_FILE"] = "./.streamlit/config.toml"
+import json
+import random
+from model import (
+    PhysicsInformedBatteryModel, 
+    AdvancedBatteryRULPredictor, 
+    create_sample_battery_data_with_physics
+)
+import warnings
+warnings.filterwarnings('ignore')
 
 st.set_page_config(
     layout="wide", 
-    page_title="Smart Battery Health Tracker",
-    page_icon="🔋",
+    page_title="Fleet Battery Intelligence Platform",
+    page_icon="🚗⚡",
     initial_sidebar_state="expanded"
 )
 
-# --- Custom CSS for Better Styling ---
+# --- Enhanced CSS for Fleet Dashboard ---
 st.markdown("""
 <style>
-    .main-header {
+    .fleet-header {
         text-align: center;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #667eea 100%);
         padding: 2rem;
-        border-radius: 10px;
+        border-radius: 15px;
         color: white;
         margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
     }
-    .metric-card {
+    .vehicle-card {
         background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        border-left: 4px solid #667eea;
-    }
-    .status-healthy { border-left-color: #28a745; }
-    .status-warning { border-left-color: #ffc107; }
-    .status-critical { border-left-color: #dc3545; }
-    .sidebar-section {
-        background: #f8f9fa;
-        padding: 1rem;
-        border-radius: 8px;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        border-left: 5px solid #667eea;
         margin-bottom: 1rem;
+        transition: all 0.3s ease;
     }
-    .insight-box {
-        background: #e3f2fd;
+    .vehicle-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    .status-excellent { border-left-color: #28a745; background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); }
+    .status-good { border-left-color: #20c997; background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%); }
+    .status-fair { border-left-color: #ffc107; background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); }
+    .status-poor { border-left-color: #fd7e14; background: linear-gradient(135deg, #ffe8d1 0%, #ffd59a 100%); }
+    .status-critical { border-left-color: #dc3545; background: linear-gradient(135deg, #f8d7da 0%, #f1b0b7 100%); }
+    
+    .physics-insight {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
         padding: 1rem;
         border-radius: 8px;
         border-left: 4px solid #2196f3;
         margin: 1rem 0;
     }
+    .realtime-metric {
+        background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+        border: 2px solid #9c27b0;
+    }
+    .alert-critical {
+        background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+        border-left: 4px solid #f44336;
+        padding: 1rem;
+        border-radius: 8px;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.7; }
+        100% { opacity: 1; }
+    }
+    .fleet-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    .diagnostic-panel {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 2px solid #6c757d;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Header ---
+# --- Initialize Session State ---
+if 'fleet_data' not in st.session_state:
+    st.session_state.fleet_data = {}
+if 'selected_vehicle' not in st.session_state:
+    st.session_state.selected_vehicle = None
+if 'real_time_mode' not in st.session_state:
+    st.session_state.real_time_mode = False
+if 'fleet_initialized' not in st.session_state:
+    st.session_state.fleet_initialized = False
+
+# --- Fleet Data Generator ---
+def generate_fleet_data(num_vehicles=15):
+    """Generate realistic fleet data with physics-informed models"""
+    fleet = {}
+    
+    vehicle_types = ["Model S", "Model 3", "Model X", "Model Y", "ID.4", "EQS", "Taycan"]
+    locations = ["Downtown", "Suburb A", "Suburb B", "Airport", "Mall", "Industrial", "Highway"]
+    
+    for i in range(num_vehicles):
+        vehicle_id = f"VEH-{1001 + i}"
+        
+        # Generate realistic historical data
+        cycles = random.randint(150, 800)
+        df = create_sample_battery_data_with_physics(cycles=cycles)
+        
+        # Add some variation for realism
+        noise_factor = random.uniform(0.8, 1.2)
+        df['soh_percent'] *= noise_factor
+        df['soh_percent'] = np.clip(df['soh_percent'], 60, 100)
+        
+        # Initialize physics model for this vehicle
+        physics_model = PhysicsInformedBatteryModel(
+            battery_type=random.choice(["Li-ion 18650", "Li-ion Pouch", "LiFePO4"])
+        )
+        
+        # Initialize RUL predictor
+        predictor = AdvancedBatteryRULPredictor(
+            eol_threshold=80, 
+            battery_type=physics_model.battery_type
+        )
+        
+        # Get current state
+        current_soh = df['soh_percent'].iloc[-1]
+        current_voltage = df['avg_voltage'].iloc[-1]
+        current_temp = df['avg_temp_c'].iloc[-1]
+        current_current = df['avg_current'].iloc[-1]
+        
+        # Real-time state simulation
+        realtime_state = predictor.process_live_sensor_data(
+            current_voltage, current_current, current_temp
+        )
+        
+        # Physics-enhanced RUL prediction
+        rul_results = predictor.predict_rul_with_physics(df)
+        
+        # Generate comprehensive analysis
+        comprehensive_results = predictor.analyze_battery_comprehensive_enhanced(df)
+        
+        fleet[vehicle_id] = {
+            'vehicle_id': vehicle_id,
+            'vehicle_type': random.choice(vehicle_types),
+            'location': random.choice(locations),
+            'historical_data': df,
+            'physics_model': physics_model,
+            'predictor': predictor,
+            'current_soh': current_soh,
+            'health_status': comprehensive_results['health_status'],
+            'health_score': comprehensive_results['health_score'],
+            'rul_prediction': rul_results['final_rul'],
+            'rul_confidence': rul_results['confidence'],
+            'rul_method': rul_results['method_used'],
+            'physics_enhanced': rul_results['physics_enhancement'],
+            'anomaly_count': comprehensive_results['anomalies']['count'],
+            'realtime_state': realtime_state,
+            'last_updated': datetime.now(),
+            'comprehensive_analysis': comprehensive_results,
+            'physics_soh_analysis': rul_results['physics_soh_analysis']
+        }
+    
+    return fleet
+
+# --- Generate Fleet Alerts ---
+def generate_fleet_alerts(fleet_data):
+    """Generate actionable business insights from fleet analysis"""
+    alerts = []
+    
+    # Critical vehicles needing immediate attention
+    critical_vehicles = [v for v in fleet_data.values() if v['rul_prediction'] and v['rul_prediction'] <= 10]
+    if critical_vehicles:
+        vehicle_list = ", ".join([v['vehicle_id'] for v in critical_vehicles])
+        alerts.append({
+            'priority': 'CRITICAL',
+            'title': 'Immediate Replacement Required',
+            'message': f"{len(critical_vehicles)} vehicle(s) need immediate battery replacement: {vehicle_list}",
+            'action': 'Schedule immediate maintenance',
+            'business_impact': 'High - Risk of service disruption'
+        })
+    
+    # Vehicles with high anomaly counts
+    anomaly_vehicles = [v for v in fleet_data.values() if v['anomaly_count'] > 15]
+    if anomaly_vehicles:
+        alerts.append({
+            'priority': 'WARNING',
+            'title': 'Unusual Operating Patterns Detected',
+            'message': f"{len(anomaly_vehicles)} vehicle(s) showing unusual patterns. May indicate driver behavior or environmental issues.",
+            'action': 'Investigate operating conditions',
+            'business_impact': 'Medium - Potential accelerated degradation'
+        })
+    
+    # Budget planning alert
+    replacement_needed = [v for v in fleet_data.values() if v['rul_prediction'] and v['rul_prediction'] <= 50]
+    if replacement_needed:
+        alerts.append({
+            'priority': 'INFO',
+            'title': 'Quarterly Budget Planning',
+            'message': f"{len(replacement_needed)} vehicle(s) will need battery replacement within 50 cycles.",
+            'action': 'Plan budget for battery replacements',
+            'business_impact': 'Planning - Budget allocation needed'
+        })
+    
+    # Physics-enhanced insights
+    physics_enhanced = [v for v in fleet_data.values() if v['physics_enhanced']]
+    if physics_enhanced:
+        alerts.append({
+            'priority': 'INFO',
+            'title': 'Advanced Physics Analysis Available',
+            'message': f"{len(physics_enhanced)} vehicle(s) have detailed physics-based health diagnostics available.",
+            'action': 'Review detailed diagnostics for optimization',
+            'business_impact': 'Opportunity - Enhanced maintenance planning'
+        })
+    
+    # Fleet health summary
+    avg_health = np.mean([v['current_soh'] for v in fleet_data.values()])
+    if avg_health < 75:
+        alerts.append({
+            'priority': 'WARNING',
+            'title': 'Fleet Health Below Target',
+            'message': f"Average fleet health is {avg_health:.1f}%. Consider fleet renewal strategy.",
+            'action': 'Develop fleet renewal plan',
+            'business_impact': 'Strategic - Fleet performance impact'
+        })
+    
+    return alerts
+
+# --- Main Header ---
 st.markdown("""
-<div class="main-header">
-    <h1>🔋 Smart Battery Health Tracker & RUL Predictor 🧠</h1>
-    <p>Advanced ML-powered predictive maintenance system for lithium-ion batteries</p>
-    <p><em>Real-time degradation tracking • Anomaly detection • Predictive analytics</em></p>
+<div class="fleet-header">
+    <h1>🚗⚡ Fleet Battery Intelligence Platform</h1>
+    <p><strong>Physics-Informed Dual-Model Framework</strong> | Real-time SOC + Diagnostic SOH + ML Forecasting</p>
+    <p><em>Actionable Business Intelligence for Smart Fleet Management</em></p>
 </div>
 """, unsafe_allow_html=True)
 
 # --- Sidebar Configuration ---
 with st.sidebar:
-    st.header("⚙️ System Configuration")
+    st.header("⚙️ Fleet Configuration")
     
-    # Battery Type Selection
-    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-    st.subheader("🔋 Battery Specifications")
-    battery_type = st.selectbox(
-        "Battery Type",
-        ["Li-ion 18650", "Li-ion Pouch", "LiFePO4", "Li-polymer", "Custom"],
-        help="Select the battery chemistry for optimized analysis"
-    )
+    # Fleet Management Section
+    st.markdown('<div class="diagnostic-panel">', unsafe_allow_html=True)
+    st.subheader("🚗 Fleet Management")
     
-    if battery_type == "Custom":
-        nominal_capacity = st.number_input("Nominal Capacity (Ah)", value=2.0, min_value=0.1)
-        nominal_voltage = st.number_input("Nominal Voltage (V)", value=3.7, min_value=1.0)
-    else:
-        # Preset values based on battery type
-        battery_specs = {
-            "Li-ion 18650": {"capacity": 2.5, "voltage": 3.7},
-            "Li-ion Pouch": {"capacity": 20.0, "voltage": 3.7},
-            "LiFePO4": {"capacity": 10.0, "voltage": 3.2},
-            "Li-polymer": {"capacity": 5.0, "voltage": 3.7}
-        }
-        nominal_capacity = battery_specs[battery_type]["capacity"]
-        nominal_voltage = battery_specs[battery_type]["voltage"]
+    fleet_size = st.slider("Fleet Size", min_value=5, max_value=25, value=15, 
+                          help="Number of vehicles in your fleet")
     
-    st.info(f"📊 Capacity: {nominal_capacity} Ah | Voltage: {nominal_voltage} V")
+    if st.button("🔄 Initialize/Refresh Fleet Data", use_container_width=True):
+        with st.spinner("Generating physics-informed fleet data..."):
+            st.session_state.fleet_data = generate_fleet_data(fleet_size)
+            st.session_state.fleet_initialized = True
+        st.success(f"Fleet data generated for {fleet_size} vehicles!")
+    
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Analysis Settings
-    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown('<div class="diagnostic-panel">', unsafe_allow_html=True)
     st.subheader("🎯 Analysis Settings")
     
-    eol_threshold = st.slider(
-        "End-of-Life Threshold (%)", 
-        min_value=70, max_value=90, value=80,
-        help="Battery capacity threshold for End-of-Life determination"
+    eol_threshold = st.slider("EOL Threshold (%)", min_value=70, max_value=90, value=80)
+    
+    analysis_mode = st.selectbox(
+        "Analysis Framework",
+        ["Dual-Model Physics", "Traditional ML Only", "Real-time Only"],
+        help="Select the analysis framework to use"
     )
     
-    prediction_horizon = st.selectbox(
-        "Prediction Horizon",
-        ["Short-term (50 cycles)", "Medium-term (100 cycles)", "Long-term (200+ cycles)"],
-        index=1
+    update_frequency = st.selectbox(
+        "Data Update Frequency",
+        ["Real-time", "Every 5 minutes", "Every 15 minutes", "Manual"],
+        help="How often to refresh fleet data"
     )
     
-    enable_anomaly_detection = st.checkbox(
-        "🚨 Enable Anomaly Detection", 
-        value=True,
-        help="Detect unusual patterns in battery behavior"
-    )
-    
-    enable_real_time = st.checkbox(
-        "📡 Real-time Monitoring Mode", 
-        value=False,
-        help="Simulate real-time data updates"
-    )
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Application Context
-    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-    st.subheader("🎯 Application Context")
-    use_case = st.selectbox(
-        "Primary Use Case",
-        ["Electric Vehicle", "Energy Storage System", "Consumer Electronics", "Grid Storage", "Research & Development"]
-    )
+    # Real-time Monitoring
+    st.markdown('<div class="diagnostic-panel">', unsafe_allow_html=True)
+    st.subheader("📡 Real-time Monitoring")
+    
+    enable_realtime = st.checkbox("Enable Real-time Updates", value=False)
+    show_physics_details = st.checkbox("Show Physics Diagnostics", value=True)
+    enable_alerts = st.checkbox("Enable Smart Alerts", value=True)
+    
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- Main Content Area ---
-col1, col2 = st.columns([2, 1])
+# --- Initialize Fleet Data if not done ---
+if not st.session_state.fleet_initialized:
+    with st.spinner("Initializing Fleet Battery Intelligence Platform..."):
+        st.session_state.fleet_data = generate_fleet_data(fleet_size)
+        st.session_state.fleet_initialized = True
 
-with col1:
-    st.subheader("📁 Data Input")
-    uploaded_file = st.file_uploader(
-        "Upload Battery Dataset (.mat file)", 
-        type="mat",
-        help="Upload NASA Battery Dataset or compatible .mat file"
-    )
-
-with col2:
-    if uploaded_file:
-        st.success("✅ File Ready")
-        st.info(f"📄 **{uploaded_file.name}**")
-    else:
-        st.info("📤 Awaiting file upload...")
-
-# --- Demo Data Option ---
-if not uploaded_file:
-    st.markdown("---")
-    st.subheader("🧪 Try Demo Data")
-    col1, col2, col3 = st.columns(3)
+# --- Main Dashboard ---
+if st.session_state.fleet_initialized:
+    fleet_data = st.session_state.fleet_data
     
-    with col1:
-        if st.button("🔋 NASA B0005 Dataset", use_container_width=True):
-            st.info("Demo mode: Simulating NASA B0005 battery data analysis...")
+    # --- Fleet Command Center ---
+    st.header("📊 Fleet Command Center", divider='blue')
     
-    with col2:
-        if st.button("⚡ High-Discharge Scenario", use_container_width=True):
-            st.info("Demo mode: Simulating high-discharge rate analysis...")
+    # Fleet Overview Statistics
+    total_vehicles = len(fleet_data)
+    avg_health = np.mean([v['current_soh'] for v in fleet_data.values()])
+    critical_count = len([v for v in fleet_data.values() if v['rul_prediction'] and v['rul_prediction'] <= 20])
+    physics_count = len([v for v in fleet_data.values() if v['physics_enhanced']])
     
-    with col3:
-        if st.button("🌡️ Temperature Stress Test", use_container_width=True):
-            st.info("Demo mode: Simulating temperature stress analysis...")
-
-# --- Analysis Section ---
-if uploaded_file is not None:
-    st.markdown("---")
+    stat_col1, stat_col2, stat_col3, stat_col4, stat_col5 = st.columns(5)
     
-    # Analysis Button with Enhanced Styling
-    analyze_col1, analyze_col2, analyze_col3 = st.columns([1, 2, 1])
+    with stat_col1:
+        st.markdown('<div class="realtime-metric">', unsafe_allow_html=True)
+        st.metric("🚗 Total Fleet", f"{total_vehicles}", help="Active vehicles in fleet")
+        st.markdown('</div>', unsafe_allow_html=True)
     
-    with analyze_col2:
-        analyze_button = st.button(
-            "🚀 Run Comprehensive Analysis", 
-            type="primary", 
-            use_container_width=True,
-            help="Perform ML-based health assessment and RUL prediction"
-        )
+    with stat_col2:
+        health_status = "Excellent" if avg_health > 90 else "Good" if avg_health > 80 else "Fair"
+        st.markdown('<div class="realtime-metric">', unsafe_allow_html=True)
+        st.metric("💚 Avg Health", f"{avg_health:.1f}%", delta=health_status)
+        st.markdown('</div>', unsafe_allow_html=True)
     
-    if analyze_button:
-        # Progress tracking
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+    with stat_col3:
+        st.markdown('<div class="realtime-metric">', unsafe_allow_html=True)
+        st.metric("⚠️ Needs Attention", f"{critical_count}", help="Vehicles with RUL ≤ 20 cycles")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with stat_col4:
+        st.markdown('<div class="realtime-metric">', unsafe_allow_html=True)
+        st.metric("🧬 Physics Enhanced", f"{physics_count}", help="Vehicles with physics diagnostics")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with stat_col5:
+        st.markdown('<div class="realtime-metric">', unsafe_allow_html=True)
+        operational_count = len([v for v in fleet_data.values() if v['current_soh'] > 80])
+        st.metric("✅ Operational", f"{operational_count}", help="Vehicles above EOL threshold")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # --- Smart Fleet Alerts ---
+    if enable_alerts:
+        st.header("🚨 Smart Fleet Alerts", divider='red')
         
-        # Simulate analysis steps
-        steps = [
-            "📊 Loading and preprocessing data...",
-            "🔍 Extracting health indicators...",
-            "🧠 Training ML models...",
-            "📈 Performing backtesting...",
-            "🎯 Generating predictions...",
-            "🚨 Running anomaly detection...",
-            "✅ Analysis complete!"
-        ]
+        fleet_alerts = generate_fleet_alerts(fleet_data)
         
-        for i, step in enumerate(steps):
-            status_text.text(step)
-            progress_bar.progress((i + 1) / len(steps))
-            time.sleep(0.3)  # Simulate processing time
-        
-        status_text.empty()
-        progress_bar.empty()
-        
-        # Run actual analysis
-        with st.spinner("Running comprehensive analysis..."):
-            try:
-                results = run_enhanced_analysis(
-                    mat_file_path=uploaded_file,
-                    eol_threshold=eol_threshold,
-                    battery_type=battery_type,
-                    streamlit_interface=st  
-                )
-
-                if results is None:
-                    st.error("🚨 ERROR: Analysis failed. No results returned.")
-                    st.stop()
-                # Unpack results safely
-                df = results.get("dataframe")
-                predictor = results.get("predictor")
-                results_df = results.get("backtest_results")
-                final_prediction = results.get("final_prediction")
-                final_method = results.get("final_method", "Unknown")
-                individual_preds = results.get("individual_predictions", {})
-                health_score = results.get("health_score", 0)
-                health_status = results.get("health_status", "Unknown")
-                anomalies_df = results.get("anomalies", pd.DataFrame())
-                confidence = results.get("prediction_confidence", 0)
-                analysis_summary = results.get("analysis_summary", {})
-                
-                # --- ENHANCED INSIGHTS SECTION ---
-                st.header("🎯 Smart Analysis Results", divider='rainbow')
-                
-                # Create insights based on results
-                insights = []
-                
-                # RUL-based insights
-                if final_prediction:
-                    if final_prediction <= 5:
-                        insights.append({
-                            "type": "critical",
-                            "icon": "🚨",
-                            "title": "Critical: Immediate Action Required",
-                            "message": f"Battery has only {final_prediction} cycles remaining. Replace immediately to avoid system failure."
-                        })
-                    elif final_prediction <= 20:
-                        insights.append({
-                            "type": "warning", 
-                            "icon": "⚠️",
-                            "title": "Warning: Plan Replacement Soon",
-                            "message": f"Battery has {final_prediction} cycles remaining. Schedule replacement within the next maintenance window."
-                        })
-                    elif final_prediction <= 50:
-                        insights.append({
-                            "type": "caution",
-                            "icon": "📋",
-                            "title": "Caution: Monitor Closely", 
-                            "message": f"Battery has {final_prediction} cycles remaining. Begin sourcing replacement and planning maintenance."
-                        })
-                    else:
-                        insights.append({
-                            "type": "good",
-                            "icon": "✅",
-                            "title": "Good: Battery Healthy",
-                            "message": f"Battery has {final_prediction} cycles remaining. Continue normal operation with regular monitoring."
-                        })
-                
-                # Health-based insights
-                if health_score < 50:
-                    insights.append({
-                        "type": "critical",
-                        "icon": "💔",
-                        "title": "Poor Battery Health Detected",
-                        "message": f"Health score is {health_score:.1f}/100. Multiple degradation indicators are concerning."
-                    })
-                elif health_score < 70:
-                    insights.append({
-                        "type": "warning",
-                        "icon": "🔍",
-                        "title": "Declining Battery Health",
-                        "message": f"Health score is {health_score:.1f}/100. Monitor degradation trends closely."
-                    })
+        if fleet_alerts:
+            for alert in fleet_alerts:
+                if alert['priority'] == 'CRITICAL':
+                    st.markdown(f'<div class="alert-critical">', unsafe_allow_html=True)
+                    st.error(f"🚨 **{alert['title']}**\n\n{alert['message']}\n\n**Action:** {alert['action']}\n\n**Business Impact:** {alert['business_impact']}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+                elif alert['priority'] == 'WARNING':
+                    st.warning(f"⚠️ **{alert['title']}**\n\n{alert['message']}\n\n**Action:** {alert['action']}\n\n**Business Impact:** {alert['business_impact']}")
                 else:
-                    insights.append({
-                        "type": "good",
-                        "icon": "💚",
-                        "title": "Good Battery Health",
-                        "message": f"Health score is {health_score:.1f}/100. Battery is performing well."
-                    })
+                    st.info(f"ℹ️ **{alert['title']}**\n\n{alert['message']}\n\n**Action:** {alert['action']}\n\n**Business Impact:** {alert['business_impact']}")
+        else:
+            st.success("✅ **All Systems Operational** - No immediate alerts for your fleet.")
+    
+    # --- Fleet Vehicle Grid ---
+    st.header("🚗 Fleet Vehicle Status", divider='green')
+    
+    # Sort vehicles by priority (critical first)
+    sorted_vehicles = sorted(fleet_data.items(), 
+                           key=lambda x: (x[1]['rul_prediction'] if x[1]['rul_prediction'] else 999, -x[1]['current_soh']))
+    
+    # Create vehicle grid (3 columns)
+    cols = st.columns(3)
+    
+    for idx, (vehicle_id, vehicle_data) in enumerate(sorted_vehicles):
+        col_idx = idx % 3
+        
+        with cols[col_idx]:
+            # Determine status class
+            health_status = vehicle_data['health_status'].lower()
+            status_class = f"status-{health_status}"
+            
+            st.markdown(f'<div class="vehicle-card {status_class}">', unsafe_allow_html=True)
+            
+            # Vehicle header
+            st.markdown(f"**🚗 {vehicle_id}** | {vehicle_data['vehicle_type']}")
+            st.markdown(f"📍 Location: {vehicle_data['location']}")
+            
+            # Key metrics
+            rul_display = f"{vehicle_data['rul_prediction']:.0f} cycles" if vehicle_data['rul_prediction'] else "N/A"
+            
+            metric_col1, metric_col2 = st.columns(2)
+            with metric_col1:
+                st.metric("Health", f"{vehicle_data['current_soh']:.1f}%")
+            with metric_col2:
+                st.metric("RUL", rul_display)
+            
+            # Physics enhancement indicator
+            if vehicle_data['physics_enhanced']:
+                st.markdown("🧬 **Physics-Enhanced Analysis**")
+            
+            # Method and confidence
+            st.markdown(f"**Method:** {vehicle_data['rul_method']}")
+            st.markdown(f"**Confidence:** {vehicle_data['rul_confidence']:.0f}%")
+            
+            # Anomaly indicator
+            if vehicle_data['anomaly_count'] > 0:
+                st.markdown(f"⚠️ **{vehicle_data['anomaly_count']} anomalies detected**")
+            
+            # Action button
+            if st.button(f"🔍 Detailed Analysis", key=f"detail_{vehicle_id}", use_container_width=True):
+                st.session_state.selected_vehicle = vehicle_id
+                st.rerun()
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+    
+    # --- Detailed Vehicle Analysis ---
+    if st.session_state.selected_vehicle:
+        selected_id = st.session_state.selected_vehicle
+        selected_data = fleet_data[selected_id]
+        
+        st.header(f"🔬 Detailed Analysis: {selected_id}", divider='purple')
+        
+        # Close button
+        if st.button("← Back to Fleet Overview"):
+            st.session_state.selected_vehicle = None
+            st.rerun()
+        
+        # Create tabs for detailed analysis
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "📊 Health Overview", 
+            "🧬 Physics Diagnostics", 
+            "📈 Trend Analysis",
+            "🚨 Anomaly Report",
+            "💡 Recommendations"
+        ])
+        
+        with tab1:
+            st.subheader(f"Health Overview - {selected_id}")
+            
+            # Real-time metrics
+            realtime = selected_data['realtime_state']
+            
+            rt_col1, rt_col2, rt_col3, rt_col4 = st.columns(4)
+            
+            with rt_col1:
+                st.markdown('<div class="realtime-metric">', unsafe_allow_html=True)
+                st.metric("Real-time SOC", f"{realtime['realtime_soc']:.1f}%")
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            with rt_col2:
+                st.markdown('<div class="realtime-metric">', unsafe_allow_html=True)
+                st.metric("Real-time SOH", f"{realtime['realtime_soh']:.1f}%")
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            with rt_col3:
+                st.markdown('<div class="realtime-metric">', unsafe_allow_html=True)
+                st.metric("OCV", f"{realtime['ocv']:.3f}V")
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            with rt_col4:
+                temp_corrected = "✅" if realtime['temperature_corrected'] else "❌"
+                st.markdown('<div class="realtime-metric">', unsafe_allow_html=True)
+                st.metric("Temp Corrected", temp_corrected)
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Historical trend chart
+            df = selected_data['historical_data']
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df['cycle'], 
+                y=df['soh_percent'],
+                mode='lines+markers',
+                name='State of Health',
+                line=dict(color='#1f77b4', width=3)
+            ))
+            
+            fig.add_hline(y=eol_threshold, line_dash="dash", line_color="red",
+                         annotation_text=f"EOL Threshold ({eol_threshold}%)")
+            
+            fig.update_layout(
+                title="State of Health Trend",
+                xaxis_title="Cycle",
+                yaxis_title="SOH (%)",
+                height=400
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with tab2:
+            if show_physics_details and selected_data['physics_enhanced']:
+                st.subheader("🧬 Physics-Informed Diagnostics")
                 
-                # Confidence-based insights
-                if confidence < 60:
-                    insights.append({
-                        "type": "info",
-                        "icon": "📊",
-                        "title": "Low Prediction Confidence",
-                        "message": f"Prediction confidence is {confidence}%. Consider collecting more data for better accuracy."
-                    })
-                elif confidence > 85:
-                    insights.append({
-                        "type": "good",
-                        "icon": "🎯",
-                        "title": "High Prediction Confidence",
-                        "message": f"Prediction confidence is {confidence}%. Results are highly reliable."
-                    })
+                physics_analysis = selected_data['physics_soh_analysis']
                 
-                # Anomaly-based insights
-                if len(anomalies_df) > 10:
-                    insights.append({
-                        "type": "warning",
-                        "icon": "🚨",
-                        "title": "Multiple Anomalies Detected",
-                        "message": f"{len(anomalies_df)} anomalies found. Investigate operating conditions and usage patterns."
-                    })
-                elif len(anomalies_df) == 0:
-                    insights.append({
-                        "type": "good",
-                        "icon": "✨",
-                        "title": "Clean Operation Profile",
-                        "message": "No anomalies detected. Battery is operating under normal conditions."
-                    })
-                
-                # Display insights
-                for insight in insights:
-                    if insight["type"] == "critical":
-                        st.error(f"{insight['icon']} **{insight['title']}**\n\n{insight['message']}")
-                    elif insight["type"] == "warning":
-                        st.warning(f"{insight['icon']} **{insight['title']}**\n\n{insight['message']}")
-                    elif insight["type"] == "caution":
-                        st.info(f"{insight['icon']} **{insight['title']}**\n\n{insight['message']}")
-                    elif insight["type"] == "good":
-                        st.success(f"{insight['icon']} **{insight['title']}**\n\n{insight['message']}")
-                    else:
-                        st.info(f"{insight['icon']} **{insight['title']}**\n\n{insight['message']}")
-                
-                # --- MAIN DASHBOARD ---
-                st.header("🎯 Battery Health Dashboard", divider='blue')
-                
-                # Key metrics row
-                metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-                
-                # Current health status
-                current_soh = df['soh_percent'].iloc[-1] if df is not None and not df.empty else 0
-                
-                # Determine status class
-                if health_status.lower() in ['excellent', 'good']:
-                    status_class = "status-healthy"
-                elif health_status.lower() == 'fair':
-                    status_class = "status-warning"
-                else:
-                    status_class = "status-critical"
-                
-                with metric_col1:
-                    st.markdown(f'<div class="metric-card {status_class}">', unsafe_allow_html=True)
-                    st.metric(
-                        label="🏥 Battery Health",
-                        value=f"{current_soh:.1f}%",
-                        delta=f"{health_status}",
-                        help="Current State of Health (SoH)"
-                    )
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with metric_col2:
-                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    rul_display = f"{final_prediction} cycles" if final_prediction else "N/A"
-                    st.metric(
-                        label="⏱️ Remaining Life",
-                        value=rul_display,
-                        help=f"Predicted using {final_method} model"
-                    )
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with metric_col3:
-                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    confidence_label = "High" if confidence >= 80 else "Medium" if confidence >= 60 else "Low"
-                    st.metric(
-                        label="🎯 Confidence",
-                        value=confidence_label,
-                        delta=f"{confidence:.0f}%",
-                        help="Prediction reliability based on model agreement and data quality"
-                    )
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with metric_col4:
-                    total_cycles = df['cycle'].max() if df is not None and not df.empty else 0
-                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.metric(
-                        label="🔄 Total Cycles",
-                        value=f"{total_cycles:,}",
-                        help="Number of charge-discharge cycles completed"
-                    )
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                # --- ADVANCED VISUALIZATIONS ---
-                st.header("📊 Advanced Analytics", divider='green')
-                
-                # Create tabs for different analyses
-                tab1, tab2, tab3, tab4, tab5 = st.tabs([
-                    "📈 Health Trends", 
-                    "🔮 RUL Prediction", 
-                    "🚨 Anomaly Detection", 
-                    "📋 Performance Report",
-                    "⚙️ Model Insights"
-                ])
-                
-                with tab1:
-                    st.subheader("Battery Health Degradation Over Time")
+                if physics_analysis and 'soh_estimate' in physics_analysis:
+                    st.markdown('<div class="physics-insight">', unsafe_allow_html=True)
+                    st.write(f"**Physics SOH Estimate:** {physics_analysis['soh_estimate']:.1f}%")
+                    st.write(f"**Analysis Quality:** {physics_analysis.get('analysis_quality', 'N/A')}")
                     
-                    if df is not None and not df.empty:
-                        # Create comprehensive health visualization
-                        fig = make_subplots(
-                            rows=2, cols=2,
-                            subplot_titles=('State of Health (%)', 'Capacity Trends', 
-                                           'Voltage Profile', 'Temperature Analysis'),
-                            specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                                   [{"secondary_y": False}, {"secondary_y": False}]]
+                    if 'peaks' in physics_analysis and physics_analysis['peaks']:
+                        st.write(f"**ICA Peaks Detected:** {len(physics_analysis['peaks'])}")
+                        
+                        # Display peak information
+                        for i, peak in enumerate(physics_analysis['peaks'][:3]):  # Show first 3 peaks
+                            peak_info = list(peak.values())
+                            if len(peak_info) >= 3:
+                                st.write(f"Peak {i+1}: Voltage={peak_info[0]:.3f}V, SOC={peak_info[1]:.3f}, Height={peak_info[2]:.2f}")
+                    
+                    if 'health_indicators' in physics_analysis:
+                        indicators = physics_analysis['health_indicators']
+                        st.write(f"**Signal Strength:** {indicators.get('signal_strength', 'N/A'):.2f}")
+                        st.write(f"**Peak Symmetry:** {indicators.get('peak_symmetry', 'N/A'):.3f}")
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # ICA Curve Visualization
+                    if 'ica_curve' in physics_analysis:
+                        ica_data = physics_analysis['ica_curve']
+                        
+                        fig_ica = make_subplots(
+                            rows=2, cols=1,
+                            subplot_titles=['Open Circuit Voltage vs SOC', 'Incremental Capacity Analysis (ICA)']
                         )
                         
-                        # SoH plot with trend line
-                        fig.add_trace(
-                            go.Scatter(x=df['cycle'], y=df['soh_percent'], 
-                                      name='SoH', line=dict(color='#1f77b4', width=3),
-                                      mode='lines+markers', marker=dict(size=3)),
+                        # OCV curve
+                        fig_ica.add_trace(
+                            go.Scatter(x=ica_data['soc'], y=ica_data['voltage'], 
+                                     mode='lines', name='OCV Curve', line=dict(color='blue')),
                             row=1, col=1
                         )
                         
-                        # Add EOL threshold line
-                        fig.add_hline(y=eol_threshold, line_dash="dash", line_color="red", 
-                                     annotation_text=f"EOL Threshold ({eol_threshold}%)",
-                                     row=1, col=1)
+                        # ICA curve
+                        fig_ica.add_trace(
+                            go.Scatter(x=ica_data['voltage'], y=ica_data['dq_dv'], 
+                                     mode='lines', name='dQ/dV', line=dict(color='red')),
+                            row=2, col=1
+                        )
                         
-                        # Add trend line
-                        if len(df) > 10:
-                            z = np.polyfit(df['cycle'], df['soh_percent'], 1)
-                            trend_line = np.poly1d(z)
-                            fig.add_trace(
-                                go.Scatter(x=df['cycle'], y=trend_line(df['cycle']),
-                                          name='Trend', line=dict(color='red', width=2, dash='dot')),
-                                row=1, col=1
-                            )
+                        fig_ica.update_layout(height=600, title_text="Physics-Based Battery Analysis")
+                        fig_ica.update_xaxes(title_text="SOC", row=1, col=1)
+                        fig_ica.update_yaxes(title_text="Voltage (V)", row=1, col=1)
+                        fig_ica.update_xaxes(title_text="Voltage (V)", row=2, col=1)
+                        fig_ica.update_yaxes(title_text="dQ/dV (Ah/V)", row=2, col=1)
                         
-                        # Capacity plot
-                        if 'capacity_ah' in df.columns:
-                            fig.add_trace(
-                                go.Scatter(x=df['cycle'], y=df['capacity_ah'], 
-                                          name='Capacity (Ah)', line=dict(color='#ff7f0e', width=2)),
-                                row=1, col=2
-                            )
-                        
-                        # Voltage plot
-                        if 'avg_voltage' in df.columns:
-                            fig.add_trace(
-                                go.Scatter(x=df['cycle'], y=df['avg_voltage'], 
-                                          name='Avg Voltage (V)', line=dict(color='#2ca02c', width=2)),
-                                row=2, col=1
-                            )
-                        
-                        # Temperature plot
-                        if 'avg_temp_c' in df.columns:
-                            fig.add_trace(
-                                go.Scatter(x=df['cycle'], y=df['avg_temp_c'], 
-                                          name='Temperature (°C)', line=dict(color='#d62728', width=2)),
-                                row=2, col=2
-                            )
-                        
-                        fig.update_layout(height=600, showlegend=True, 
-                                         title_text="Multi-Parameter Health Monitoring")
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Health degradation summary
-                        st.subheader("📊 Degradation Analysis")
-                        deg_col1, deg_col2, deg_col3 = st.columns(3)
-                        
-                        initial_soh = df['soh_percent'].iloc[0]
-                        total_degradation = initial_soh - current_soh
-                        avg_degradation_rate = total_degradation / len(df) if len(df) > 0 else 0
-                        
-                        with deg_col1:
-                            st.metric("Total Degradation", f"{total_degradation:.1f}%")
-                        with deg_col2:
-                            st.metric("Avg Degradation Rate", f"{avg_degradation_rate:.3f}%/cycle")
-                        with deg_col3:
-                            cycles_to_eol = (current_soh - eol_threshold) / avg_degradation_rate if avg_degradation_rate > 0 else float('inf')
-                            st.metric("Linear Projection to EOL", f"{cycles_to_eol:.0f} cycles" if cycles_to_eol != float('inf') else "N/A")
-                    
-                    else:
-                        st.error("No data available for visualization")
+                        st.plotly_chart(fig_ica, use_container_width=True)
                 
-                with tab2:
-                    st.subheader("Remaining Useful Life Prediction")
-                    
-                    if df is not None and not df.empty and predictor:
-                        # Create RUL prediction visualization
-                        try:
-                            fig = predictor.plot_rul_predictions(df, test_cycle=df['cycle'].max(), return_fig=True)
-                            st.pyplot(fig)
-                        except Exception as e:
-                            st.warning(f"Could not generate RUL plot: {e}")
-                            
-                            # Fallback: Create simple RUL visualization
-                            fig = go.Figure()
-                            
-                            # Add SoH data
-                            fig.add_trace(go.Scatter(
-                                x=df['cycle'], 
-                                y=df['soh_percent'],
-                                mode='lines+markers',
-                                name='State of Health',
-                                line=dict(color='blue', width=3)
-                            ))
-                            
-                            # Add EOL threshold
-                            fig.add_hline(y=eol_threshold, line_dash="dash", line_color="red",
-                                         annotation_text=f"EOL Threshold ({eol_threshold}%)")
-                            
-                            # Add prediction point
-                            if final_prediction:
-                                predicted_eol_cycle = df['cycle'].max() + final_prediction
-                                fig.add_vline(x=predicted_eol_cycle, line_dash="dot", line_color="green",
-                                             annotation_text=f"Predicted EOL (Cycle {predicted_eol_cycle})")
-                            
-                            fig.update_layout(
-                                title="RUL Prediction Visualization",
-                                xaxis_title="Cycle Number",
-                                yaxis_title="State of Health (%)",
-                                height=400
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Add prediction details
-                        st.subheader("🔍 Prediction Breakdown")
-                        
-                        if individual_preds:
-                            pred_data = []
-                            for method, pred in individual_preds.items():
-                                status = "✅ Available" if pred is not None else "❌ Not Available"
-                                pred_value = f"{pred} cycles" if pred is not None else "N/A"
-                                pred_data.append({
-                                    "Model": method.replace('_', ' ').title(),
-                                    "Prediction": pred_value,
-                                    "Status": status
-                                })
-                            
-                            pred_df = pd.DataFrame(pred_data)
-                            st.dataframe(pred_df, use_container_width=True)
-                        
-                        # Prediction reliability analysis
-                        st.subheader("📊 Prediction Reliability")
-                        
-                        valid_preds = [p for p in individual_preds.values() if p is not None]
-                        if len(valid_preds) > 1:
-                            pred_std = np.std(valid_preds)
-                            pred_mean = np.mean(valid_preds)
-                            cv = pred_std / pred_mean if pred_mean > 0 else 0
-                            
-                            rel_col1, rel_col2, rel_col3 = st.columns(3)
-                            
-                            with rel_col1:
-                                st.metric("Model Agreement", f"{len(valid_preds)}/{len(individual_preds)} models")
-                            with rel_col2:
-                                st.metric("Prediction Std Dev", f"{pred_std:.1f} cycles")
-                            with rel_col3:
-                                agreement_pct = max(0, 100 - (cv * 100))
-                                st.metric("Agreement Score", f"{agreement_pct:.1f}%")
-                    
-                    else:
-                        st.error("No data available for RUL prediction")
+                else:
+                    st.warning("Physics diagnostics not available for this vehicle")
+            else:
+                st.info("Physics diagnostics disabled or not available for this vehicle")
+        
+        with tab3:
+            st.subheader("📈 Comprehensive Trend Analysis")
+            
+            df = selected_data['historical_data']
+            
+            # Multi-parameter visualization
+            fig_trends = make_subplots(
+                rows=2, cols=2,
+                subplot_titles=['SOH Trend', 'Capacity Trend', 'Voltage Profile', 'Temperature Profile']
+            )
+            
+            # SOH trend
+            fig_trends.add_trace(
+                go.Scatter(x=df['cycle'], y=df['soh_percent'], mode='lines+markers', 
+                          name='SOH', line=dict(color='blue')), row=1, col=1
+            )
+            
+            # Capacity trend
+            if 'capacity_ah' in df.columns:
+                fig_trends.add_trace(
+                    go.Scatter(x=df['cycle'], y=df['capacity_ah'], mode='lines', 
+                              name='Capacity', line=dict(color='green')), row=1, col=2
+                )
+            
+            # Voltage profile
+            if 'avg_voltage' in df.columns:
+                fig_trends.add_trace(
+                    go.Scatter(x=df['cycle'], y=df['avg_voltage'], mode='lines', 
+                              name='Voltage', line=dict(color='orange')), row=2, col=1
+                )
+            
+            # Temperature profile
+            if 'avg_temp_c' in df.columns:
+                fig_trends.add_trace(
+                    go.Scatter(x=df['cycle'], y=df['avg_temp_c'], mode='lines', 
+                              name='Temperature', line=dict(color='red')), row=2, col=2
+                )
+            
+            fig_trends.update_layout(height=600, showlegend=False, title_text="Multi-Parameter Trend Analysis")
+            st.plotly_chart(fig_trends, use_container_width=True)
+            
+            # Degradation metrics
+            st.subheader("📊 Degradation Metrics")
+            
+            initial_soh = df['soh_percent'].iloc[0]
+            current_soh = df['soh_percent'].iloc[-1]
+            total_cycles = len(df)
+            degradation_rate = (initial_soh - current_soh) / total_cycles
+            
+            deg_col1, deg_col2, deg_col3 = st.columns(3)
+            
+            with deg_col1:
+                st.metric("Total Degradation", f"{initial_soh - current_soh:.1f}%")
+            with deg_col2:
+                st.metric("Degradation Rate", f"{degradation_rate:.4f}%/cycle")
+            with deg_col3:
+                projected_eol = (current_soh - eol_threshold) / degradation_rate if degradation_rate > 0 else float('inf')
+                st.metric("Linear EOL Projection", f"{projected_eol:.0f} cycles" if projected_eol != float('inf') else "N/A")
+        
+        with tab4:
+            st.subheader("🚨 Anomaly Detection Report")
+            
+            analysis = selected_data['comprehensive_analysis']
+            anomalies = analysis['anomalies']
+            
+            if anomalies['count'] > 0:
+                st.warning(f"⚠️ {anomalies['count']} anomalies detected in vehicle operation")
                 
-                with tab3:
-                    st.subheader("🚨 Anomaly Detection & Health Alerts")
+                # Anomaly summary
+                if 'summary' in anomalies:
+                    st.write("**Anomaly Types:**")
+                    for anomaly_type, count in anomalies['summary'].items():
+                        st.write(f"- {anomaly_type}: {count}")
+                
+                # Anomaly visualization
+                df = selected_data['historical_data']
+                anomaly_fig = go.Figure()
+                
+                # Normal operation line
+                anomaly_fig.add_trace(go.Scatter(
+                    x=df['cycle'], 
+                    y=df['soh_percent'],
+                    mode='lines',
+                    name='Normal Operation',
+                    line=dict(color='blue', width=2)
+                ))
+                
+                # Mark anomaly points if available
+                if 'cycles' in anomalies and anomalies['cycles']:
+                    anomaly_cycles = anomalies['cycles']
+                    anomaly_soh_values = []
                     
-                    if enable_anomaly_detection and df is not None and not df.empty:
-                        if not anomalies_df.empty and 'cycles' in anomalies_df.columns:
-                            st.info(f"🔍 Detected {len(anomalies_df)} anomalies in battery behavior")
-                            
-                            # Create anomaly visualization
-                            anomaly_fig = go.Figure()
-                            
-                            # Add normal data
-                            anomaly_fig.add_trace(go.Scatter(
-                                x=df['cycle'], 
-                                y=df['soh_percent'],
-                                mode='lines',
-                                name='Normal Operation',
-                                line=dict(color='blue', width=2)
-                            ))
-                            
-                            # Add detected anomalies
-                            anomaly_cycles = anomalies_df['cycles'].tolist()
-                            anomaly_soh_values = []
-                            
-                            for cycle in anomaly_cycles:
-                                matching_rows = df[df['cycle'] == cycle]
-                                if not matching_rows.empty:
-                                    anomaly_soh_values.append(matching_rows['soh_percent'].iloc[0])
-                                else:
-                                    anomaly_soh_values.append(df['soh_percent'].mean())
-                            
-                            # Group anomalies by type if available
-                            if 'types' in anomalies_df.columns:
-                                anomaly_types = anomalies_df['types'].unique()
-                                colors_map = {'Statistical': 'red', 'Pattern': 'orange', 'Degradation': 'purple', 'Temperature': 'yellow'}
-                                
-                                for anomaly_type in anomaly_types:
-                                    type_anomalies = anomalies_df[anomalies_df['types'] == anomaly_type]
-                                    type_cycles = type_anomalies['cycles'].tolist()
-                                    type_soh = []
-                                    
-                                    for cycle in type_cycles:
-                                        matching_rows = df[df['cycle'] == cycle]
-                                        if not matching_rows.empty:
-                                            type_soh.append(matching_rows['soh_percent'].iloc[0])
-                                        else:
-                                            type_soh.append(df['soh_percent'].mean())
-                                    
-                                    anomaly_fig.add_trace(go.Scatter(
-                                        x=type_cycles,
-                                        y=type_soh,
-                                        mode='markers',
-                                        name=f'{anomaly_type} Anomalies',
-                                        marker=dict(
-                                            color=colors_map.get(anomaly_type, 'red'), 
-                                            size=10, 
-                                            symbol='x'
-                                        )
-                                    ))
-                            else:
-                                # Simple anomaly plot
-                                anomaly_fig.add_trace(go.Scatter(
-                                    x=anomaly_cycles,
-                                    y=anomaly_soh_values,
-                                    mode='markers',
-                                    name='Anomalies',
-                                    marker=dict(color='red', size=10, symbol='x')
-                                ))
-                            
-                            anomaly_fig.update_layout(
-                                title="Anomaly Detection Results",
-                                xaxis_title="Cycle",
-                                yaxis_title="State of Health (%)",
-                                height=400
-                            )
-                            
-                            st.plotly_chart(anomaly_fig, use_container_width=True)
-                            
-                            # Anomaly summary
-                            if 'types' in anomalies_df.columns:
-                                st.write("**Detected Anomalies Summary**")
-                                anomaly_summary = anomalies_df['types'].value_counts().reset_index()
-                                anomaly_summary.columns = ['Anomaly Type', 'Count']
-                                st.dataframe(anomaly_summary, use_container_width=True)
-                            
-                            # Health alerts
-                            alert_col1, alert_col2 = st.columns(2)
-                            
-                            if 'types' in anomalies_df.columns:
-                                degradation_anomalies = len(anomalies_df[anomalies_df['types'] == 'Degradation'])
-                                temp_anomalies = len(anomalies_df[anomalies_df['types'] == 'Temperature'])
-                                
-                                with alert_col1:
-                                    if degradation_anomalies > 0:
-                                        st.warning(f"⚠️ **Degradation Alert**\n{degradation_anomalies} rapid degradation events detected")
-                                    else:
-                                        st.success("✅ **Degradation Normal**\nNo unusual degradation patterns detected")
-                                
-                                with alert_col2:
-                                    if temp_anomalies > 0:
-                                        st.error(f"🌡️ **Temperature Alert**\n{temp_anomalies} temperature stress events detected")
-                                    else:
-                                        st.success("✅ **Temperature Normal**\nNo temperature stress detected")
-                        
+                    for cycle in anomaly_cycles:
+                        matching_rows = df[df['cycle'] == cycle]
+                        if not matching_rows.empty:
+                            anomaly_soh_values.append(matching_rows['soh_percent'].iloc[0])
                         else:
-                            st.success("✅ No anomalies detected - Battery operating normally")
-                            
-                            # Show normal operation chart
-                            normal_fig = go.Figure()
-                            normal_fig.add_trace(go.Scatter(
-                                x=df['cycle'], 
-                                y=df['soh_percent'],
-                                mode='lines+markers',
-                                name='Normal Operation',
-                                line=dict(color='green', width=2)
-                            ))
-                            normal_fig.update_layout(
-                                title="Normal Battery Operation - No Anomalies Detected",
-                                xaxis_title="Cycle",
-                                yaxis_title="State of Health (%)",
-                                height=400
-                            )
-                            st.plotly_chart(normal_fig, use_container_width=True)
+                            anomaly_soh_values.append(df['soh_percent'].mean())
                     
-                    else:
-                        st.info("Enable anomaly detection in the sidebar to see health alerts.")
+                    anomaly_fig.add_trace(go.Scatter(
+                        x=anomaly_cycles,
+                        y=anomaly_soh_values,
+                        mode='markers',
+                        name='Anomalies',
+                        marker=dict(color='red', size=10, symbol='x')
+                    ))
                 
-                with tab4:
-                    st.subheader("📋 Comprehensive Performance Report")
-                    
-                    # Battery specifications and analysis summary
-                    st.write("**Battery Analysis Summary**")
-                    
-                    summary_data = {
-                        "Parameter": [
-                            "Battery Type", 
-                            "EOL Threshold", 
-                            "Total Cycles Analyzed", 
-                            "Current SoH", 
-                            "Health Score",
-                            "Health Status", 
-                            "Anomalies Detected", 
-                            "Capacity Fade",
-                            "Final Prediction Method",
-                            "Prediction Confidence"
-                        ],
-                        "Value": [
-                            battery_type, 
-                            f"{eol_threshold}%", 
-                            f"{analysis_summary.get('total_cycles', 'N/A')} cycles",
-                            f"{analysis_summary.get('current_soh', current_soh):.1f}%",
-                            f"{health_score:.1f}/100",
-                            health_status,
-                            f"{analysis_summary.get('anomaly_count', len(anomalies_df))}",
-                            f"{analysis_summary.get('capacity_fade', 100-current_soh):.1f}%",
-                            final_method,
-                            f"{confidence}%"
-                        ]
-                    }
-                    st.table(pd.DataFrame(summary_data))
-                    
-                    # Performance metrics table
-                    if results_df is not None and len(results_df) > 0:
-                        st.write("**Backtesting Performance Analysis**")
-                        
-                        # Calculate performance metrics safely
-                        try:
-                            numeric_errors = pd.to_numeric(results_df['final_error'], errors='coerce').dropna()
-                            
-                            if len(numeric_errors) > 0:
-                                mae = numeric_errors.abs().mean()
-                                rmse = np.sqrt(numeric_errors.pow(2).mean())
-                                
-                                # Calculate MAPE safely
-                                actual_rul_numeric = pd.to_numeric(results_df['actual_rul'], errors='coerce')
-                                valid_indices = ~(numeric_errors.isna() | actual_rul_numeric.isna() | (actual_rul_numeric == 0))
-                                
-                                if valid_indices.sum() > 0:
-                                    mape = (numeric_errors[valid_indices].abs() / actual_rul_numeric[valid_indices] * 100).mean()
-                                else:
-                                    mape = 0
-                                
-                                perf_col1, perf_col2, perf_col3 = st.columns(3)
-                                
-                                with perf_col1:
-                                    st.metric("Mean Absolute Error", f"{mae:.2f} cycles")
-                                with perf_col2:
-                                    st.metric("Root Mean Square Error", f"{rmse:.2f} cycles")
-                                with perf_col3:
-                                    st.metric("Mean Absolute Percentage Error", f"{mape:.1f}%")
-                            
-                            # Show subset of backtesting results
-                            st.write("**Sample Backtesting Results**")
-                            display_cols = [col for col in ['test_cycle', 'actual_rul', 'final_rul', 'final_error', 'prediction_confidence'] 
-                                          if col in results_df.columns]
-                            
-                            if display_cols:
-                                display_df = results_df[display_cols].head(10).copy()
-                                # Format numeric columns
-                                for col in display_df.columns:
-                                    if col in ['actual_rul', 'final_rul', 'final_error']:
-                                        display_df[col] = pd.to_numeric(display_df[col], errors='coerce').round(1)
-                                
-                                st.dataframe(display_df, use_container_width=True)
-                                
-                        except Exception as e:
-                            st.warning(f"Could not calculate performance metrics: {e}")
-                    
-                    # Maintenance recommendations
-                    st.write("**🔧 Maintenance Recommendations**")
-                    
-                    recommendations = []
-                    
-                    if final_prediction and final_prediction <= 10:
-                        recommendations.append("🚨 **Immediate**: Replace battery within next 5 cycles")
-                        recommendations.append("📋 **Action**: Order replacement battery immediately")
-                        recommendations.append("⚡ **Monitor**: Check daily for performance degradation")
-                    elif final_prediction and final_prediction <= 50:
-                        recommendations.append("📅 **Schedule**: Plan replacement within next maintenance window")
-                        recommendations.append("📦 **Preparation**: Source replacement battery")
-                        recommendations.append("📊 **Monitor**: Increase monitoring frequency to weekly")
-                    else:
-                        recommendations.append("✅ **Continue**: Normal operation and monitoring")
-                        recommendations.append("📈 **Review**: Monthly health assessment")
-                        recommendations.append("🔍 **Optimize**: Consider usage pattern optimization")
-                    
-                    if len(anomalies_df) > 10:
-                        recommendations.append("🔍 **Investigate**: High anomaly count - check operating conditions")
-                    
-                    if health_score < 60:
-                        recommendations.append("🏥 **Health**: Consider detailed battery diagnostics")
-                    
-                    for rec in recommendations:
-                        st.write(f"• {rec}")
+                anomaly_fig.update_layout(
+                    title="Anomaly Detection Results",
+                    xaxis_title="Cycle",
+                    yaxis_title="State of Health (%)",
+                    height=400
+                )
                 
-                with tab5:
-                    st.subheader("⚙️ Model Performance & Insights")
-                    
-                    # Model comparison
-                    st.write("**Individual Model Predictions**")
-                    if individual_preds:
-                        model_data = []
-                        for method, pred in individual_preds.items():
-                            reliability = results.get("model_reliability", {}).get(method, 0)
-                            if pred is not None:
-                                model_data.append({
-                                    "Model": method.replace('_', ' ').title(),
-                                    "Prediction (cycles)": str(pred),
-                                    "Reliability": f"{reliability:.2f}",
-                                    "Status": "✅ Available"
-                                })
-                            else:
-                                model_data.append({
-                                    "Model": method.replace('_', ' ').title(),
-                                    "Prediction (cycles)": "N/A",
-                                    "Reliability": "0.00",
-                                    "Status": "❌ Not available"
-                                })
+                st.plotly_chart(anomaly_fig, use_container_width=True)
+                
+            else:
+                st.success("✅ No anomalies detected - Vehicle operating normally")
+        
+        with tab5:
+            st.subheader("💡 Smart Recommendations")
+            
+            # Generate vehicle-specific recommendations
+            vehicle_recommendations = []
+            
+            rul = selected_data['rul_prediction']
+            current_soh = selected_data['current_soh']
+            anomaly_count = selected_data['anomaly_count']
+            health_score = selected_data['health_score']
+            
+            # RUL-based recommendations
+            if rul and rul <= 5:
+                vehicle_recommendations.append({
+                    'priority': 'CRITICAL',
+                    'category': 'Immediate Action',
+                    'recommendation': 'Replace battery immediately - less than 5 cycles remaining',
+                    'timeline': 'Within 24 hours',
+                    'cost_impact': 'High - Emergency replacement costs'
+                })
+            elif rul and rul <= 20:
+                vehicle_recommendations.append({
+                    'priority': 'HIGH',
+                    'category': 'Maintenance Planning',
+                    'recommendation': 'Schedule battery replacement within next maintenance window',
+                    'timeline': 'Within 2 weeks',
+                    'cost_impact': 'Medium - Planned replacement costs'
+                })
+            elif rul and rul <= 50:
+                vehicle_recommendations.append({
+                    'priority': 'MEDIUM',
+                    'category': 'Procurement',
+                    'recommendation': 'Order replacement battery and plan installation',
+                    'timeline': 'Within 1 month',
+                    'cost_impact': 'Medium - Standard replacement costs'
+                })
+            
+            # Health-based recommendations
+            if health_score < 60:
+                vehicle_recommendations.append({
+                    'priority': 'HIGH',
+                    'category': 'Diagnostics',
+                    'recommendation': 'Perform detailed battery diagnostics and health assessment',
+                    'timeline': 'Within 1 week',
+                    'cost_impact': 'Low - Diagnostic costs only'
+                })
+            
+            # Anomaly-based recommendations
+            if anomaly_count > 15:
+                vehicle_recommendations.append({
+                    'priority': 'MEDIUM',
+                    'category': 'Investigation',
+                    'recommendation': 'Investigate operating conditions and driver behavior patterns',
+                    'timeline': 'Within 2 weeks',
+                    'cost_impact': 'Low - Analysis and training costs'
+                })
+            
+            # Physics enhancement opportunities
+            if not selected_data['physics_enhanced']:
+                vehicle_recommendations.append({
+                    'priority': 'LOW',
+                    'category': 'Optimization',
+                    'recommendation': 'Collect additional OCV data for enhanced physics diagnostics',
+                    'timeline': 'Ongoing',
+                    'cost_impact': 'None - Data collection improvement'
+                })
+            
+            # Display recommendations
+            if vehicle_recommendations:
+                for rec in vehicle_recommendations:
+                    if rec['priority'] == 'CRITICAL':
+                        st.error(f"🚨 **{rec['category']}** (Priority: {rec['priority']})\n\n"
+                                f"**Recommendation:** {rec['recommendation']}\n\n"
+                                f"**Timeline:** {rec['timeline']}\n\n"
+                                f"**Cost Impact:** {rec['cost_impact']}")
+                    elif rec['priority'] == 'HIGH':
+                        st.warning(f"⚠️ **{rec['category']}** (Priority: {rec['priority']})\n\n"
+                                  f"**Recommendation:** {rec['recommendation']}\n\n"
+                                  f"**Timeline:** {rec['timeline']}\n\n"
+                                  f"**Cost Impact:** {rec['cost_impact']}")
+                    elif rec['priority'] == 'MEDIUM':
+                        st.info(f"🔧 **{rec['category']}** (Priority: {rec['priority']})\n\n"
+                               f"**Recommendation:** {rec['recommendation']}\n\n"
+                               f"**Timeline:** {rec['timeline']}\n\n"
+                               f"**Cost Impact:** {rec['cost_impact']}")
+                    else:
+                        st.success(f"💡 **{rec['category']}** (Priority: {rec['priority']})\n\n"
+                                  f"**Recommendation:** {rec['recommendation']}\n\n"
+                                  f"**Timeline:** {rec['timeline']}\n\n"
+                                  f"**Cost Impact:** {rec['cost_impact']}")
+            else:
+                st.success("✅ **Vehicle Operating Optimally** - Continue normal monitoring schedule")
+            
+            # Business impact summary
+            st.subheader("📊 Business Impact Summary")
+            
+            # Calculate estimated costs
+            replacement_cost = 15000  # Typical EV battery replacement cost
+            diagnostic_cost = 500
+            maintenance_cost = 1000
+            
+            if rul and rul <= 20:
+                estimated_cost = replacement_cost
+                impact_level = "High"
+                impact_description = "Immediate battery replacement required"
+            elif rul and rul <= 50:
+                estimated_cost = replacement_cost
+                impact_level = "Medium"
+                impact_description = "Planned battery replacement needed"
+            else:
+                estimated_cost = maintenance_cost
+                impact_level = "Low"
+                impact_description = "Continue normal maintenance"
+            
+            impact_col1, impact_col2, impact_col3 = st.columns(3)
+            
+            with impact_col1:
+                st.metric("Estimated Cost", f"${estimated_cost:,}")
+            with impact_col2:
+                st.metric("Impact Level", impact_level)
+            with impact_col3:
+                downtime_hours = 8 if rul and rul <= 20 else 4 if rul and rul <= 50 else 0
+                st.metric("Est. Downtime", f"{downtime_hours} hours")
+    
+    # --- Fleet Analytics Dashboard ---
+    st.header("📈 Fleet Analytics Dashboard", divider='orange')
+    
+    # Create fleet-wide analytics
+    analytics_tab1, analytics_tab2, analytics_tab3 = st.tabs([
+        "📊 Fleet Health Distribution",
+        "🎯 Predictive Maintenance",
+        "💰 Cost Analysis"
+    ])
+    
+    with analytics_tab1:
+        st.subheader("Fleet Health Distribution Analysis")
+        
+        # Health status distribution
+        health_statuses = [v['health_status'] for v in fleet_data.values()]
+        status_counts = pd.Series(health_statuses).value_counts()
+        
+        fig_health_dist = px.pie(
+            values=status_counts.values,
+            names=status_counts.index,
+            title="Fleet Health Status Distribution",
+            color_discrete_map={
+                'Excellent': '#28a745',
+                'Good': '#20c997',
+                'Fair': '#ffc107',
+                'Poor': '#fd7e14',
+                'Critical': '#dc3545'
+            }
+        )
+        
+        st.plotly_chart(fig_health_dist, use_container_width=True)
+        
+        # SOH distribution histogram
+        soh_values = [v['current_soh'] for v in fleet_data.values()]
+        
+        fig_soh_dist = px.histogram(
+            x=soh_values,
+            nbins=20,
+            title="State of Health Distribution Across Fleet",
+            labels={'x': 'State of Health (%)', 'y': 'Number of Vehicles'}
+        )
+        fig_soh_dist.add_vline(x=eol_threshold, line_dash="dash", line_color="red",
+                               annotation_text=f"EOL Threshold ({eol_threshold}%)")
+        
+        st.plotly_chart(fig_soh_dist, use_container_width=True)
+    
+    with analytics_tab2:
+        st.subheader("Predictive Maintenance Planning")
+        
+        # RUL distribution
+        rul_values = [v['rul_prediction'] for v in fleet_data.values() if v['rul_prediction']]
+        
+        if rul_values:
+            fig_rul_dist = px.histogram(
+                x=rul_values,
+                nbins=15,
+                title="Remaining Useful Life Distribution",
+                labels={'x': 'RUL (cycles)', 'y': 'Number of Vehicles'}
+            )
+            fig_rul_dist.add_vline(x=20, line_dash="dash", line_color="orange",
+                                   annotation_text="Attention Threshold (20 cycles)")
+            fig_rul_dist.add_vline(x=5, line_dash="dash", line_color="red",
+                                   annotation_text="Critical Threshold (5 cycles)")
+            
+            st.plotly_chart(fig_rul_dist, use_container_width=True)
+            
+            # Maintenance timeline
+            st.subheader("📅 Maintenance Timeline")
+            
+            maintenance_schedule = []
+            for vehicle_id, data in fleet_data.items():
+                if data['rul_prediction'] and data['rul_prediction'] <= 100:
+                    estimated_date = datetime.now() + timedelta(days=data['rul_prediction'] * 7)  # Assume 1 cycle = 1 week
+                    maintenance_schedule.append({
+                        'Vehicle': vehicle_id,
+                        'Current SOH': f"{data['current_soh']:.1f}%",
+                        'RUL (cycles)': data['rul_prediction'],
+                        'Est. Replacement Date': estimated_date.strftime('%Y-%m-%d'),
+                        'Priority': 'Critical' if data['rul_prediction'] <= 10 else 'High' if data['rul_prediction'] <= 30 else 'Medium'
+                    })
+            
+            if maintenance_schedule:
+                maintenance_df = pd.DataFrame(maintenance_schedule)
+                maintenance_df = maintenance_df.sort_values('RUL (cycles)')
+                st.dataframe(maintenance_df, use_container_width=True)
+            else:
+                st.info("No vehicles require immediate maintenance scheduling")
+    
+    with analytics_tab3:
+        st.subheader("💰 Fleet Cost Analysis")
+        
+        # Calculate fleet costs
+        total_vehicles = len(fleet_data)
+        vehicles_needing_replacement = len([v for v in fleet_data.values() if v['rul_prediction'] and v['rul_prediction'] <= 50])
+        vehicles_critical = len([v for v in fleet_data.values() if v['rul_prediction'] and v['rul_prediction'] <= 10])
+        
+        # Cost estimates
+        battery_cost = 15000
+        emergency_multiplier = 1.5
+        diagnostic_cost = 500
+        
+        planned_replacement_cost = (vehicles_needing_replacement - vehicles_critical) * battery_cost
+        emergency_replacement_cost = vehicles_critical * battery_cost * emergency_multiplier
+        diagnostic_costs = total_vehicles * diagnostic_cost
+        
+        total_estimated_cost = planned_replacement_cost + emergency_replacement_cost + diagnostic_costs
+        
+        cost_col1, cost_col2, cost_col3, cost_col4 = st.columns(4)
+        
+        with cost_col1:
+            st.metric("Planned Replacements", f"${planned_replacement_cost:,}")
+        with cost_col2:
+            st.metric("Emergency Replacements", f"${emergency_replacement_cost:,}")
+        with cost_col3:
+            st.metric("Diagnostics Budget", f"${diagnostic_costs:,}")
+        with cost_col4:
+            st.metric("Total Estimated", f"${total_estimated_cost:,}")
+        
+        # Cost breakdown chart
+        cost_breakdown = {
+            'Cost Category': ['Planned Replacements', 'Emergency Replacements', 'Diagnostics', 'Other Maintenance'],
+            'Amount': [planned_replacement_cost, emergency_replacement_cost, diagnostic_costs, total_vehicles * 2000]
+        }
+        
+        cost_df = pd.DataFrame(cost_breakdown)
+        
+        fig_costs = px.bar(
+            cost_df,
+            x='Cost Category',
+            y='Amount',
+            title="Estimated Fleet Maintenance Costs",
+            labels={'Amount': 'Cost ($)'}
+        )
+        
+        st.plotly_chart(fig_costs, use_container_width=True)
+        
+        # ROI Analysis
+        st.subheader("📊 ROI of Predictive Maintenance")
+        
+        # Calculate savings from predictive vs reactive maintenance
+        reactive_emergency_rate = 0.3  # 30% of failures would be emergency without prediction
+        emergency_premium = 0.5  # 50% cost premium for emergency repairs
+        downtime_cost_per_hour = 200
+        
+        total_potential_failures = vehicles_needing_replacement
+        avoided_emergencies = int(total_potential_failures * reactive_emergency_rate)
+        cost_savings = avoided_emergencies * battery_cost * emergency_premium
+        downtime_savings = avoided_emergencies * 8 * downtime_cost_per_hour  # 8 hours average emergency downtime
+        
+        roi_col1, roi_col2, roi_col3 = st.columns(3)
+        
+        with roi_col1:
+            st.metric("Avoided Emergencies", f"{avoided_emergencies}")
+        with roi_col2:
+            st.metric("Cost Savings", f"${cost_savings:,}")
+        with roi_col3:
+            st.metric("Downtime Savings", f"${downtime_savings:,}")
+        
+        total_savings = cost_savings + downtime_savings
+        platform_cost = 50000  # Estimated annual platform cost
+        roi_percentage = ((total_savings - platform_cost) / platform_cost) * 100 if platform_cost > 0 else 0
+        
+        st.success(f"🎯 **Annual ROI: {roi_percentage:.1f}%** (${total_savings:,} savings vs ${platform_cost:,} platform cost)")
 
-                        model_df = pd.DataFrame(model_data)
-                        st.dataframe(model_df, use_container_width=True)
-                    
-                    # Feature importance visualization
-                    st.write("**Key Health Indicators Impact**")
-                    
-                    feature_data = {
-                        "Feature": [
-                            "State of Health Trend", "Capacity Degradation Rate", 
-                            "Voltage Stability", "Temperature Stress", 
-                            "Cycle Count", "Usage Patterns"
-                        ],
-                        "Importance": [0.35, 0.25, 0.15, 0.12, 0.08, 0.05],
-                        "Impact": ["Critical", "High", "Medium", "Medium", "Low", "Low"]
-                    }
-                    
-                    importance_df = pd.DataFrame(feature_data)
-                    
-                    # Create bar chart for feature importance
-                    fig_importance = px.bar(
-                        importance_df, 
-                        x='Importance', 
-                        y='Feature',
-                        color='Impact',
-                        orientation='h',
-                        title="Feature Importance for RUL Prediction",
-                        color_discrete_map={
-                            'Critical': '#dc3545',
-                            'High': '#fd7e14', 
-                            'Medium': '#ffc107',
-                            'Low': '#28a745'
-                        }
-                    )
-                    fig_importance.update_layout(height=400)
-                    st.plotly_chart(fig_importance, use_container_width=True)
-                    
-                    # Model performance insights
-                    st.write("**Analysis Insights**")
-                    
-                    technical_insights = []
-                    
-                    # Model-specific insights
-                    if final_method == 'trend_analysis':
-                        technical_insights.append("📈 **Trend Analysis**: Used linear regression on recent degradation patterns")
-                    elif final_method == 'polynomial':
-                        technical_insights.append("📊 **Polynomial Model**: Captured non-linear degradation behavior")
-                    elif final_method == 'exponential_smoothing':
-                        technical_insights.append("📉 **Exponential Smoothing**: Applied time-series forecasting techniques")
-                    
-                    # Data quality insights
-                    if df is not None and len(df) > 100:
-                        technical_insights.append(f"📊 **Data Quality**: Rich dataset with {len(df)} cycles enables reliable predictions")
-                    elif df is not None and len(df) < 50:
-                        technical_insights.append(f"⚠️ **Data Limitation**: Limited dataset ({len(df)} cycles) may affect prediction accuracy")
-                    
-                    # Confidence insights
-                    if confidence > 90:
-                        technical_insights.append("🎯 **High Confidence**: Multiple models agree closely on prediction")
-                    elif confidence < 70:
-                        technical_insights.append("📊 **Moderate Confidence**: Model predictions show some variation")
-                    
-                    for insight in technical_insights:
-                        st.info(insight)
-                
-                # --- EXPORT OPTIONS ---
-                st.header("📤 Export & Integration", divider='gray')
-                
-                export_col1, export_col2, export_col3 = st.columns(3)
-                
-                with export_col1:
-                    if st.button("📊 Export Report (PDF)", use_container_width=True):
-                        st.success("Report generation initiated...")
-                
-                with export_col2:
-                    if st.button("📋 Export Data (CSV)", use_container_width=True):
-                        if df is not None and not df.empty:
-                            csv = df.to_csv(index=False)
-                            st.download_button(
-                                label="Download CSV",
-                                data=csv,
-                                file_name=f"battery_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                mime="text/csv"
-                            )
-                        else:
-                            st.error("No data available for export")
-                
-                with export_col3:
-                    if st.button("🔗 API Integration", use_container_width=True):
-                        st.info("API endpoints for real-time integration:\n- GET /api/health\n- GET /api/predictions\n- POST /api/data")
-                
-                # --- REAL-TIME MONITORING ---
-                if enable_real_time:
-                    st.header("📡 Real-Time Monitoring", divider='green')
-                    
-                    # Create placeholders for real-time updates
-                    rt_col1, rt_col2, rt_col3 = st.columns(3)
-                    
-                    with rt_col1:
-                        st.metric("🔋 Live SoH", f"{current_soh:.1f}%", delta="-0.1%")
-                    
-                    with rt_col2:
-                        temp_value = df['avg_temp_c'].iloc[-1] if 'avg_temp_c' in df.columns else 25.0
-                        st.metric("🌡️ Temperature", f"{temp_value:.1f}°C", delta="0.2°C")
-                    
-                    with rt_col3:
-                        current_value = df.get('avg_current', [2.1]).iloc[-1] if 'avg_current' in df.columns else 2.1
-                        st.metric("⚡ Current Load", f"{current_value:.1f}A", delta="-0.1A")
-                    
-                    # Real-time chart placeholder
-                    st.info("📊 Real-time data streaming would appear here in a production environment")
-                
-            except Exception as e:
-                st.error(f"An error occurred during analysis: {str(e)}")
-                st.info("Please ensure your data file is in the correct format.")
-                # Show debug info
-                with st.expander("Debug Information"):
-                    st.code(f"Error details: {str(e)}")
-                    import traceback
-                    st.code(traceback.format_exc())
+# --- Real-time Updates ---
+if enable_realtime and st.session_state.fleet_initialized:
+    # Auto-refresh every 30 seconds in real-time mode
+    time.sleep(0.1)  # Small delay to prevent excessive reloading
+    
+    # Update timestamp
+    st.sidebar.success(f"🔄 Last updated: {datetime.now().strftime('%H:%M:%S')}")
+    
+    # Auto-refresh button
+    if st.sidebar.button("🔄 Force Refresh", use_container_width=True):
+        st.rerun()
+
+# --- Export and Integration ---
+st.header("📤 Export & Integration", divider='gray')
+
+export_col1, export_col2, export_col3, export_col4 = st.columns(4)
+
+with export_col1:
+    if st.button("📊 Export Fleet Report", use_container_width=True):
+        # Create summary report
+        if st.session_state.fleet_initialized:
+            report_data = {
+                'Fleet Summary': {
+                    'Total Vehicles': len(fleet_data),
+                    'Average Health': f"{np.mean([v['current_soh'] for v in fleet_data.values()]):.1f}%",
+                    'Vehicles Needing Attention': len([v for v in fleet_data.values() if v['rul_prediction'] and v['rul_prediction'] <= 20]),
+                    'Physics Enhanced': len([v for v in fleet_data.values() if v['physics_enhanced']])
+                }
+            }
+            
+            st.download_button(
+                label="Download Report (JSON)",
+                data=json.dumps(report_data, indent=2, default=str),
+                file_name=f"fleet_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json"
+            )
+
+with export_col2:
+    if st.button("📋 Export Vehicle Data", use_container_width=True):
+        if st.session_state.fleet_initialized:
+            # Create vehicle summary
+            vehicle_summary = []
+            for vehicle_id, data in fleet_data.items():
+                vehicle_summary.append({
+                    'Vehicle_ID': vehicle_id,
+                    'Vehicle_Type': data['vehicle_type'],
+                    'Location': data['location'],
+                    'Current_SOH': data['current_soh'],
+                    'Health_Status': data['health_status'],
+                    'RUL_Prediction': data['rul_prediction'],
+                    'Confidence': data['rul_confidence'],
+                    'Physics_Enhanced': data['physics_enhanced'],
+                    'Anomaly_Count': data['anomaly_count']
+                })
+            
+            summary_df = pd.DataFrame(vehicle_summary)
+            csv = summary_df.to_csv(index=False)
+            
+            st.download_button(
+                label="Download CSV",
+                data=csv,
+                file_name=f"fleet_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+
+with export_col3:
+    if st.button("🔗 API Integration", use_container_width=True):
+        st.info("""
+        **API Endpoints Available:**
+        - GET /api/fleet/status
+        - GET /api/vehicle/{id}/health
+        - GET /api/fleet/alerts
+        - POST /api/vehicle/{id}/data
+        - GET /api/analytics/costs
+        """)
+
+with export_col4:
+    if st.button("⚙️ System Settings", use_container_width=True):
+        st.info("""
+        **System Configuration:**
+        - Real-time data ingestion
+        - Automated alert thresholds
+        - Maintenance scheduling
+        - Cost optimization settings
+        """)
 
 # --- Footer ---
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 2rem;'>
-    <p><strong>🔋 Smart Battery Health Tracker</strong> | Developed for predictive maintenance applications</p>
-    <p><em>Electric Vehicles • Energy Storage Systems • Smart Grids • Consumer Electronics</em></p>
-    <p>Powered by Machine Learning • Real-time Analytics • Anomaly Detection</p>
+    <p><strong>🚗⚡ Fleet Battery Intelligence Platform</strong> | Physics-Informed Dual-Model Framework</p>
+    <p><em>Real-time SOC (Hu et al.) • Diagnostic SOH (Weng et al.) • ML Forecasting • Business Intelligence</em></p>
+    <p>Transforming Fleet Management with Actionable Battery Intelligence</p>
 </div>
 """, unsafe_allow_html=True)
